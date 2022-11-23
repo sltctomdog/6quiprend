@@ -1,5 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+#include <stdbool.h>
+
+#define DECK_SIZE 104
+
+typedef struct Joueur
+    {
+        int choixCarte;
+        int cartes[10];
+        int teteBoeuf;
+    }Joueur;
 
 int** creerPiles();
 void affichePiles(int** mat);
@@ -9,27 +20,77 @@ int compterPointPile(int* pile);
 void resetPile(int* pile, int carte);
 int compterCartePile(int* pile);
 void ajouterCartePile(int* pile, int carte);
+void shuffle(int* array, size_t length);
+void afficherDeck(int* array);
+bool isCarteValid(Joueur joueur,int choixCarte);
 
 int main(){
-    int** piles = creerPiles();
-    piles[0][0] = 21;
-    piles[1][0] = 58;
-    piles[2][0] = 6;
-    piles[3][0] = 89;
-    affichePiles(piles);
+/*                                                          Initilalisation                                               */
+    int cartesTotal[DECK_SIZE];
+    int nbJoueur=2;
+    int choixCarte;
+    //printf("Nombre Joueur : ");
+    //scanf("%d", &nbJoueur);
+    Joueur joueurs[nbJoueur];
 
-    char var[20];
-    int points = jouerCarte(piles, 8);
-    points = jouerCarte(piles, 10);
-    points = jouerCarte(piles, 11);
-    points = jouerCarte(piles, 12);
-    points = jouerCarte(piles, 60);
-    //points = jouerCarte(piles, 19);
-    
-    printf("%d\n", points);
-    printf("\n");
-    affichePiles(piles);
+    /*      Shuffle le deck des 104 cartes    */
+    for(int i=0; i<DECK_SIZE;i++)
+        cartesTotal[i]=i+1;
+    shuffle(cartesTotal,DECK_SIZE);
+
+    //Afichage du deck
+    afficherDeck(cartesTotal);
+
+
+    /*      Distribution des cartes et initialise la vie des joueurs à 0     */
+    for(int i=0; i < nbJoueur; i++)
+    {
+        int count=0;
+        joueurs[i].teteBoeuf=0;
+        
+        for(int j=0;j<DECK_SIZE;j++)
+        {
+            if(cartesTotal[j]!=0 && count<10)
+            {
+                joueurs[i].cartes[count]=cartesTotal[j];
+                cartesTotal[j]=0;
+                count++;
+            }
+        }
+    }
+
+    /*      Création et remplissage des piles       */
+    int** piles = creerPiles();
+
+    int count=0;
+    for(int i=0; i<DECK_SIZE; i++)
+    {
+        if(cartesTotal[i]!=0 && count<4)
+        {
+            piles[count][0]=cartesTotal[i];
+            cartesTotal[i]=0;
+            count++;
+        }
+    }
+
+    while(1)
+    {
+        affichePiles(piles);
+        for(int i=0 ; i < nbJoueur; i++)
+        {
+            printf("J%d voici tes cartes : ",i);
+            for(int j=0;j<10;j++)
+                printf("%d ",joueurs[i].cartes[j]);
+            do{
+            printf("\nJ%d choisis une carte : ",i);
+            scanf("%d",&choixCarte);
+            }while(!isCarteValid(joueurs[i],choixCarte));
+
+            joueurs[i].teteBoeuf+=jouerCarte(piles,choixCarte);
+        }   
+    }
     detruitPiles(piles);
+
 }
 
 int jouerCarte(int** piles, int carte){
@@ -150,4 +211,39 @@ void detruitPiles(int** m)
         free(m[i]);
     }
     free(m);
+}
+
+void shuffle(int *array, size_t length)
+{
+    int i,j,temp;
+
+    srand(time(NULL));
+
+    for(i = 0; i < DECK_SIZE; i++)
+    {
+        j = (rand()%DECK_SIZE-1)+1;
+        temp = array[i];
+        array[i] = array[j];
+        array[j] = temp;
+    }
+}
+
+void afficherDeck(int* array)
+{
+    for(int j=0;j<DECK_SIZE;j++)
+    {
+        printf("cartesTotal[%d]=%d\n",j,array[j]);
+    }
+}
+
+bool isCarteValid(Joueur joueur,int choixCarte)
+{
+    bool res=false;
+    for(int i=0; i<10; i++)
+    {
+        if(choixCarte==joueur.cartes[i])
+            res=true;
+    }
+
+    return res;
 }
