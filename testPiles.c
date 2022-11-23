@@ -7,8 +7,8 @@
 
 typedef struct Joueur
     {
-        int choixCarte;
-        int cartes[10];
+        int nbCarte;
+        int* cartes;
         int teteBoeuf;
     }Joueur;
 
@@ -22,7 +22,8 @@ int compterCartePile(int* pile);
 void ajouterCartePile(int* pile, int carte);
 void shuffle(int* array, size_t length);
 void afficherDeck(int* array);
-bool isCarteValid(Joueur joueur,int choixCarte);
+bool isCarteValid(Joueur* joueur,int choixCarte);
+void retirerCarte(Joueur* joueur, int carte);
 
 int main(){
 /*                                                          Initilalisation                                               */
@@ -31,28 +32,33 @@ int main(){
     int choixCarte;
     //printf("Nombre Joueur : ");
     //scanf("%d", &nbJoueur);
-    Joueur joueurs[nbJoueur];
-
+    Joueur** joueurs = (Joueur**)malloc(nbJoueur*sizeof(Joueur*));
+    
     /*      Shuffle le deck des 104 cartes    */
     for(int i=0; i<DECK_SIZE;i++)
         cartesTotal[i]=i+1;
     shuffle(cartesTotal,DECK_SIZE);
 
     //Afichage du deck
-    afficherDeck(cartesTotal);
+    //afficherDeck(cartesTotal);
 
 
     /*      Distribution des cartes et initialise la vie des joueurs à 0     */
     for(int i=0; i < nbJoueur; i++)
     {
-        int count=0;
-        joueurs[i].teteBoeuf=0;
         
+        int count=0;
+        joueurs[i] = (Joueur*)malloc(sizeof(Joueur));    
+        joueurs[i]->teteBoeuf=0;
+        joueurs[i]->nbCarte = 10;  
+        joueurs[i]->cartes = (int*)calloc(10, sizeof(int));
+        
+
         for(int j=0;j<DECK_SIZE;j++)
         {
             if(cartesTotal[j]!=0 && count<10)
             {
-                joueurs[i].cartes[count]=cartesTotal[j];
+                joueurs[i]->cartes[count]=cartesTotal[j];
                 cartesTotal[j]=0;
                 count++;
             }
@@ -72,25 +78,30 @@ int main(){
             count++;
         }
     }
-
-    while(1)
-    {
-        affichePiles(piles);
+    
+    while(joueurs[0]->nbCarte>0)
+    {      
         for(int i=0 ; i < nbJoueur; i++)
         {
-            printf("J%d voici tes cartes : ",i);
-            for(int j=0;j<10;j++)
-                printf("%d ",joueurs[i].cartes[j]);
+            printf("\n");
+            affichePiles(piles);
+            printf("\nTetes de boeufs du joueur %d : %d\n",i, joueurs[i]->teteBoeuf);
+            printf("Cartes du joueur %d : ",i);
+            for(int j=0;j<joueurs[i]->nbCarte;j++)
+                printf("%d ",joueurs[i]->cartes[j]);
             do{
-            printf("\nJ%d choisis une carte : ",i);
+            printf("\nJoueur %d choisis une carte : ",i);
             scanf("%d",&choixCarte);
             }while(!isCarteValid(joueurs[i],choixCarte));
-
-            joueurs[i].teteBoeuf+=jouerCarte(piles,choixCarte);
+            retirerCarte(joueurs[i], choixCarte);
+            joueurs[i]->teteBoeuf+=jouerCarte(piles,choixCarte);
         }   
     }
     detruitPiles(piles);
-
+    for(int i=0;i<nbJoueur;i++){
+        free(joueurs[i]->cartes);
+        free(joueurs);
+    }
 }
 
 int jouerCarte(int** piles, int carte){
@@ -138,6 +149,23 @@ int jouerCarte(int** piles, int carte){
         resetPile(piles[indicePile], carte);
         return pointsPile;
     }
+}
+
+void retirerCarte(Joueur* joueur, int carte){
+    //Création d'un tableau recevant les cartes du joueur, sans celle qui vient d'être joué
+    int* temp = (int*)calloc(joueur->nbCarte-1, sizeof(int));
+    int cpt = 0;
+    for(int i=0;i<joueur->nbCarte;i++){
+        if(joueur->cartes[i]!=carte){
+            temp[cpt]=joueur->cartes[i];
+            cpt++;
+        }
+    }
+
+    //Libération de la mémoire occupé par l'ancienne main du joueur
+    free(joueur->cartes);
+    joueur->cartes = temp;  
+    joueur->nbCarte--;
 }
 
 void ajouterCartePile(int* pile, int carte){
@@ -236,12 +264,12 @@ void afficherDeck(int* array)
     }
 }
 
-bool isCarteValid(Joueur joueur,int choixCarte)
+bool isCarteValid(Joueur* joueur,int choixCarte)
 {
     bool res=false;
     for(int i=0; i<10; i++)
     {
-        if(choixCarte==joueur.cartes[i])
+        if(choixCarte==joueur->cartes[i])
             res=true;
     }
 
