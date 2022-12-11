@@ -45,6 +45,8 @@ void detruitPiles(int** m); //gestionJeu
 void affichePiles(int** mat); //gestionJeu
 void envoyerPiles(int** mat, client *client); //gestionServeur 
 void envoyerMain(client *client); //gestionServeur 
+void demanderCartes(clientArray *in, int* cartesTour); //gestionServeur 
+void *pthreadDemanderCartes(void *ptrClient); //gestionServeur 
 bool isCarteValid(client *client,int choixCarte); //gestionJeu 
 int indicePlusPetiteCarte(int* cartes, int nbCartes); //gestionJeu
 int jouerCarte(int** piles, int carte, client* cli); //gestionJeu
@@ -59,6 +61,7 @@ void initPiles(int** piles, int* paquet); //gestionJeu
 int* creerPaquet(); //gestionJeu
 bool checkNewGame(clientArray *in); //gestionServeur 
 void *pthreadAskClient(void *ptrClient); //gestionServeur 
+
 
 int main(int argc, char const *argv[]){
     if(argc != 3){
@@ -115,23 +118,14 @@ int main(int argc, char const *argv[]){
                     envoyerMain(&lstClient->lst[i]);
             }
 
-            /* Demande la carte à jouer à chaque client */           
-            for (size_t i = 0; i < lstClient->size && ret_fgets==NULL; i++) {
-                int choixCarte;
-                if(!lstClient->lst[i].isBot){
-                    do{
-                        fprintf(lstClient->lst[i].file_ptr, "Saisir la carte à jouer : ");
-                        ret_fgets= fgets(client_input, SIZE_INPUT_USER,lstClient->lst[i].file_ptr);
-                        choixCarte = atol(client_input);
-                    }while(choixCarte<1 || choixCarte>104 || !isCarteValid(&lstClient->lst[i],choixCarte)); //Demande tant que la carte n'est pas dans la main du client
-                    ret_fgets=NULL;
-                    cartesTour[i]=choixCarte;
-                }else{
-                    cartesTour[i]=lstClient->lst[i].cartes[0];
-                }               
+            /* Demande les cartes aux clients */
+            demanderCartes(lstClient, cartesTour);
+
+            /* Joue la carte des bots */
+            for(int i=lstClient->nb_client;i<lstClient->size;i++){
+                cartesTour[i]=lstClient->lst[i].cartes[0];
             }
-            ret_fgets=NULL;       
-            
+
             /* Joue la carte de chaque joueur dans le bon ordre */
             for(int j=0;j<lstClient->size;j++){
                 int iMin = indicePlusPetiteCarte(cartesTour, lstClient->size);
@@ -153,13 +147,13 @@ int main(int argc, char const *argv[]){
         free(paquet);
         free(cartesTour);
         sleep(2);
-
     }while(checkNewGame(lstClient)==true); //Verifie si tous les clients veulent rejouer
 
     /* Signal la fin de la partie et leur classement à chacun des clients */
     for(int k=0;k<lstClient->nb_client;k++){
             fprintf(lstClient->lst[k].file_ptr, "Fin de la partie !\n");
     }
+    
     envoyerClassement(lstClient);
 
     /* Déallocation de l'espace mémoire utilisé par la liste des joueurs */
@@ -271,11 +265,13 @@ void *pthreadInitClient(void *ptrClient){
     \param in pointeur sur la structure clientArray
 */
 void freeClientArray(clientArray *in){
-    for(size_t i=0; i<in->size ; i++){
-        fclose(in->lst[i].file_ptr);
+    for(size_t i=0; i<in->size ; i++){       
         if(in->lst[i].cartes!=NULL){
-        free(in->lst[i].cartes);
+            free(in->lst[i].cartes);
         }
+    }
+    for(int i=0;i<in->nb_client;i++){
+        fclose(in->lst[i].file_ptr);
     }
     free(in->lst);
     free(in);
@@ -574,11 +570,13 @@ void envoyerClassement(clientArray *in){
             if(in->lst[j].teteBoeuf<in->lst[i].teteBoeuf)
                 indice++;
         }
-        if(indice==1){
+        if(!in->lst[i].isBot){
+            if(indice==1){
             fprintf(in->lst[i].file_ptr, "Vous finissez 1er de la partie !");
         }else{
             fprintf(in->lst[i].file_ptr, "Vous finissez %deme de la partie !", indice);
-        }         
+        }      
+        }        
     }
 }
 
@@ -676,5 +674,51 @@ void *pthreadAskClient(void *ptrClient){
     fprintf(cli->file_ptr,"\e[1;1H\e[2JVoulez vous rejouer une partie ?(y/n): ");
     fgets(reponse,3,cli->file_ptr);
   } while(reponse[0]!='y' && reponse[0]!='n');
+  pthread_exit((void *)reponse);
+}
+
+//! Demande les cartes à jouer aux joueurs
+/*!
+    \param in pointeur sur la structure clientArray
+    \param cartesTour pointeur sur le tableau contenant les cartes du tour
+    \return true si tous les joueurs veulent rejouer sinon false
+*/
+void demanderCartes(clientArray *in, int* cartesTour){
+    pthread_t *lst = malloc(sizeof(pthread_t)*in->nb_client);
+    int check;
+    if(lst==NULL)FATAL();
+    for(size_t i=0;i<in->nb_client;i++){
+      check=pthread_create(lst+i,NULL, pthreadDemanderCartes, (void *)(in->lst+i));
+
+      if(check!=0)FATAL();
+    }
+
+    char *ret;
+    int choixCarte;
+    for(size_t i=0; i<in->nb_client;i++){
+        pthread_join(lst[i], (void *)&ret);
+        choixCarte = atol(ret);
+        cartesTour[i]=choixCarte;
+        free(ret);
+    }
+    free(lst);
+}
+
+//! thread demande la carte à jouer au client
+/*!
+  \param ptrClient pointeur sur la structure client
+  \return return pointeur sur la reponse
+*/
+void *pthreadDemanderCartes(void *ptrClient){
+  char *reponse = malloc(sizeof(char)*SIZE_INPUT_USER);
+  int rep;
+  memset(reponse,0,SIZE_INPUT_USER);
+  client *cli=(client *)ptrClient;
+  if(reponse==NULL) FATAL();
+  do {
+    fprintf(cli->file_ptr,"Saisir la carte à jouer : ");
+    fgets(reponse,SIZE_INPUT_USER,cli->file_ptr);
+    rep = atol(reponse);
+  } while(rep<1 || rep>104 || !isCarteValid(ptrClient,rep));
   pthread_exit((void *)reponse);
 }
