@@ -26,40 +26,40 @@ typedef struct{
     size_t nbCarte;
     size_t teteBoeuf;
     bool isBot;
-}client;
+}joueur;
 
 typedef struct{
-  client *lst;
+  joueur *lst;
   size_t size;
   size_t nb_client;
-} clientArray;
+} joueurArray;
 
 int createSock();  //gestionServeur 
-clientArray* createClientArray(size_t max_joueur, size_t nb_bot); //gestionServeur 
-void acceptClient(int serverSock,clientArray *clientArr, size_t nb); //gestionServeur 
+joueurArray* createjoueurArray(size_t max_joueur, size_t nb_bot); //gestionServeur 
+void acceptClient(int serverSock,joueurArray *joueurArr, size_t nb); //gestionServeur 
 void *pthreadInitClient(void *ptrClient); //gestionServeur 
-void freeClientArray(clientArray *in); //gestionServeur 
+void freejoueurArray(joueurArray *in); //gestionServeur 
 void shuffle(int *array, size_t length); //gestionJeu
 int** creerPiles(int* paquet); //gestionJeu
 void detruitPiles(int** m); //gestionJeu
 void affichePiles(int** mat); //gestionJeu
-void envoyerPiles(int** mat, client *client); //gestionServeur 
-void envoyerMain(client *client); //gestionServeur 
-void demanderCartes(clientArray *in, int* cartesTour); //gestionServeur 
+void envoyerPiles(int** mat, joueur *joueur); //gestionServeur 
+void envoyerMain(joueur *joueur); //gestionServeur 
+void demanderCartes(joueurArray *in, int* cartesTour); //gestionServeur 
 void *pthreadDemanderCartes(void *ptrClient); //gestionServeur 
-bool isCarteValid(client *client,int choixCarte); //gestionJeu 
+bool isCarteValid(joueur *joueur,int choixCarte); //gestionJeu 
 int indicePlusPetiteCarte(int* cartes, int nbCartes); //gestionJeu
-int jouerCarte(int** piles, int carte, client* cli); //gestionJeu
-void retirerCarte(client *client, int carte); //gestionJeu 
+int jouerCarte(int** piles, int carte, joueur* joueur); //gestionJeu
+void retirerCarte(joueur *joueur, int carte); //gestionJeu 
 int compterPointPile(int* pile); //gestionJeu 
 void resetPile(int* pile, int carte); //gestionJeu
 int compterCartePile(int* pile); //gestionJeu
 void ajouterCartePile(int* pile, int carte); //gestionJeu
-void envoyerClassement(clientArray *in); //gestionServeur  
-void distribuerCartes(client *c, int* paquet); //gestionJeu
+void envoyerClassement(joueurArray *in); //gestionServeur  
+void distribuerCartes(joueur *joueur, int* paquet); //gestionJeu
 void initPiles(int** piles, int* paquet); //gestionJeu
 int* creerPaquet(); //gestionJeu
-bool checkNewGame(clientArray *in); //gestionServeur 
+bool checkNewGame(joueurArray *in); //gestionServeur 
 void *pthreadAskClient(void *ptrClient); //gestionServeur 
 
 
@@ -69,13 +69,13 @@ int main(int argc, char const *argv[]){
     return 1;
     }
 
-    /* init client */
+    /* init joueurs */
     size_t nb_client;
     size_t nb_bot;
     nb_client = atol(argv[1]);
     nb_bot = atol(argv[2]);
     int sock = createSock();
-    clientArray *lstClient = NULL;
+    joueurArray *lstJoueur = NULL;
     char client_input[SIZE_INPUT_USER];
     char *ret_fgets = NULL;
 
@@ -83,13 +83,13 @@ int main(int argc, char const *argv[]){
     printf("Nombre de clients : %lu\n", nb_client);
     printf("Nombre de bots : %lu\n", nb_bot);
     printf("En attente des clients ...\n");
-    lstClient =createClientArray(nb_client+nb_bot, nb_client);
-    acceptClient(sock, lstClient, nb_client);
+    lstJoueur =createjoueurArray(nb_client+nb_bot, nb_client);
+    acceptClient(sock, lstJoueur, nb_client);
 
 
     /* Clients receptionnés */
-    for (size_t i = 0; i < lstClient->size; i++) {
-        printf("Client %lu : %s\n",i,lstClient->lst[i].name);
+    for (size_t i = 0; i < lstJoueur->size; i++) {
+        printf("Client %lu : %s\n",i,lstJoueur->lst[i].name);
     }
 
     /* init paquet, piles, cartesTour */
@@ -102,44 +102,44 @@ int main(int argc, char const *argv[]){
         
         /* init manche */
         paquet = creerPaquet();
-        for (size_t i = 0; i < lstClient->size; i++) {
-            distribuerCartes(&lstClient->lst[i], paquet);
+        for (size_t i = 0; i < lstJoueur->size; i++) {
+            distribuerCartes(&lstJoueur->lst[i], paquet);
         }
         piles = creerPiles(paquet);    
-        cartesTour = (int*)calloc(lstClient->size, sizeof(int));
+        cartesTour = (int*)calloc(lstJoueur->size, sizeof(int));
         /* manche loop */
         do{    
             affichePiles(piles); 
 
             /* Envoie les piles, la main et le nombre de tête de boeufs à chaque client */
-            for (size_t i = 0; i < lstClient->nb_client; i++) {
-                    envoyerPiles(piles, &lstClient->lst[i]);
-                    fprintf(lstClient->lst[i].file_ptr, "Vous avez <%d> tetes de boeufs\n", lstClient->lst[i].teteBoeuf);
-                    envoyerMain(&lstClient->lst[i]);
+            for (size_t i = 0; i < lstJoueur->nb_client; i++) {
+                    envoyerPiles(piles, &lstJoueur->lst[i]);
+                    fprintf(lstJoueur->lst[i].file_ptr, "Vous avez <%d> tetes de boeufs\n", lstJoueur->lst[i].teteBoeuf);
+                    envoyerMain(&lstJoueur->lst[i]);
             }
 
             /* Demande les cartes aux clients */
-            demanderCartes(lstClient, cartesTour);
+            demanderCartes(lstJoueur, cartesTour);
 
             /* Joue la carte des bots */
-            for(int i=lstClient->nb_client;i<lstClient->size;i++){
-                cartesTour[i]=lstClient->lst[i].cartes[0];
+            for(int i=lstJoueur->nb_client;i<lstJoueur->size;i++){
+                cartesTour[i]=lstJoueur->lst[i].cartes[0];
             }
 
             /* Joue la carte de chaque joueur dans le bon ordre */
-            for(int j=0;j<lstClient->size;j++){
-                int iMin = indicePlusPetiteCarte(cartesTour, lstClient->size);
-                lstClient->lst[iMin].teteBoeuf+=jouerCarte(piles, cartesTour[iMin],&lstClient->lst[iMin]);
-                retirerCarte(&lstClient->lst[iMin], cartesTour[iMin]);
+            for(int j=0;j<lstJoueur->size;j++){
+                int iMin = indicePlusPetiteCarte(cartesTour, lstJoueur->size);
+                lstJoueur->lst[iMin].teteBoeuf+=jouerCarte(piles, cartesTour[iMin],&lstJoueur->lst[iMin]);
+                retirerCarte(&lstJoueur->lst[iMin], cartesTour[iMin]);
                 cartesTour[iMin]=0;
             }
            
             usleep(5000); //anti saturation du cpu
-        }while(lstClient->lst->nbCarte>0); //Tant que les joueurs ont des cartes
+        }while(lstJoueur->lst->nbCarte>0); //Tant que les joueurs ont des cartes
 
         /* Signal la fin de la manche à tous les clients */
-        for(int k=0;k<lstClient->nb_client;k++){
-            fprintf(lstClient->lst[k].file_ptr, "Fin de la manche !\n");
+        for(int k=0;k<lstJoueur->nb_client;k++){
+            fprintf(lstJoueur->lst[k].file_ptr, "Fin de la manche !\n");
         }
 
         /* Déallocation de la mémoire utilisée par les piles, le paquet et les cartesTour utilisée pendant cette manche */
@@ -147,17 +147,17 @@ int main(int argc, char const *argv[]){
         free(paquet);
         free(cartesTour);
         sleep(2);
-    }while(checkNewGame(lstClient)==true); //Verifie si tous les clients veulent rejouer
+    }while(checkNewGame(lstJoueur)==true); //Verifie si tous les clients veulent rejouer
 
     /* Signal la fin de la partie et leur classement à chacun des clients */
-    for(int k=0;k<lstClient->nb_client;k++){
-            fprintf(lstClient->lst[k].file_ptr, "Fin de la partie !\n");
+    for(int k=0;k<lstJoueur->nb_client;k++){
+            fprintf(lstJoueur->lst[k].file_ptr, "Fin de la partie !\n");
     }
     
-    envoyerClassement(lstClient);
+    envoyerClassement(lstJoueur);
 
     /* Déallocation de l'espace mémoire utilisé par la liste des joueurs */
-    freeClientArray(lstClient);
+    freejoueurArray(lstJoueur);
     close(sock);
 }
 
@@ -184,16 +184,16 @@ int createSock(){
     return sock;
 }
 
-//! Crée la structure clientArray dans le tas
+//! Crée la structure joueurArray dans le tas
 /*!
-  \param max_joueur nombre max de joueur
-  \param nb_bot nombre de client
-  \return pointeur sur la structure clientArray
+  \param max_joueur nombre de joueur
+  \param nb_client nombre de client
+  \return pointeur sur la structure joueurArray
 */
-clientArray* createClientArray(size_t max_joueur, size_t nb_client){
-    clientArray* ret = malloc(sizeof(clientArray));
+joueurArray* createjoueurArray(size_t max_joueur, size_t nb_client){
+    joueurArray* ret = malloc(sizeof(joueurArray));
     if(ret==NULL)FATAL();
-    ret->lst = malloc(sizeof(client)*max_joueur);
+    ret->lst = malloc(sizeof(joueur)*max_joueur);
     if(ret->lst == NULL)FATAL();
     for(size_t i=0; i < max_joueur; i++){
         ret->lst[i].file_ptr=NULL;
@@ -211,10 +211,10 @@ clientArray* createClientArray(size_t max_joueur, size_t nb_client){
 //! Accepte la connexion des clients 
 /*!
   \param serverSock serveur
-  \param clientArr pointeur sur la structure clientArray
+  \param clientArr pointeur sur la structure joueurArray
   \param nb nombre de client
 */
-void acceptClient(int serverSock,clientArray *clientArr, size_t nb){
+void acceptClient(int serverSock,joueurArray *joueurArr, size_t nb){
     struct sockaddr_in sin;
     socklen_t csize = sizeof(sin);
     int tmp;
@@ -227,11 +227,11 @@ void acceptClient(int serverSock,clientArray *clientArr, size_t nb){
         if(tmp==-1)FATAL();
         ip = inet_ntoa(sin.sin_addr);
         printf("Incoming connection [%s]\n",ip);
-        clientArr->lst[i].file_ptr = fdopen(tmp,"a+");
-        if(clientArr->lst[i].file_ptr == NULL)FATAL();
+        joueurArr->lst[i].file_ptr = fdopen(tmp,"a+");
+        if(joueurArr->lst[i].file_ptr == NULL)FATAL();
 
-        setvbuf(clientArr->lst[i].file_ptr,NULL, _IONBF, 0);
-        retpthread = pthread_create(pthread_t_lst +i, NULL, pthreadInitClient, (void *)(clientArr->lst + i));
+        setvbuf(joueurArr->lst[i].file_ptr,NULL, _IONBF, 0);
+        retpthread = pthread_create(pthread_t_lst +i, NULL, pthreadInitClient, (void *)(joueurArr->lst + i));
         if(retpthread!=0)FATAL();
     }
     //wait all thread
@@ -245,11 +245,11 @@ void acceptClient(int serverSock,clientArray *clientArr, size_t nb){
 
 //! thread initialisation client
 /*!
-  \param ptrClient pointeur sur la strucutre client
+  \param ptrClient pointeur sur la structure joueur
   \return NULL defeat warning
 */
 void *pthreadInitClient(void *ptrClient){
-    client *cli = (client *)ptrClient;
+    joueur *cli = (joueur *)ptrClient;
     fprintf(cli->file_ptr, "Entrez votre nom : ");
     fgets(cli->name,SIZE_NAME,cli->file_ptr);
     cli->name[strlen(cli->name)-1] = '\0';
@@ -260,11 +260,11 @@ void *pthreadInitClient(void *ptrClient){
     pthread_exit (ptrClient);
 }
 
-//! Déallocation de la mémoire pour clientArray
+//! Déallocation de la mémoire pour joueurArray
 /*!
-    \param in pointeur sur la structure clientArray
+    \param in pointeur sur la structure joueurArray
 */
-void freeClientArray(clientArray *in){
+void freejoueurArray(joueurArray *in){
     for(size_t i=0; i<in->size ; i++){       
         if(in->lst[i].cartes!=NULL){
             free(in->lst[i].cartes);
@@ -346,43 +346,43 @@ void affichePiles(int** mat)
 //! Envoie les cartes des piles au clients 
 /*!
     \param mat pointeur sur le tableau contenant les pointeurs vers les piles 
-    \param client pointeur sur la structure client
+    \param joueur pointeur sur la structure joueur
 */
-void envoyerPiles(int** mat, client *client)
+void envoyerPiles(int** mat, joueur *joueur)
 {
     for(int i=0; i<4; i++)
     {
         for(int j=0; j<6; j++)
         {
-            fprintf(client->file_ptr, " %d ", mat[i][j]);
+            fprintf(joueur->file_ptr, " %d ", mat[i][j]);
         }
-        fprintf(client->file_ptr, "\n");
+        fprintf(joueur->file_ptr, "\n");
     }
 }
 
-//! Envoie les cartes de sa main au client
+//! Envoie les cartes de leur mains aux clients
 /*!
-    \param client pointeur sur la structure client
+    \param joueur pointeur sur la structure joueur
 */
-void envoyerMain(client *client){
-    fprintf(client->file_ptr, "Vos cartes : ");
-    for(int j=0;j<client->nbCarte;j++)
-        fprintf(client->file_ptr, "%d ", client->cartes[j]);
-    fprintf(client->file_ptr, "\n");
+void envoyerMain(joueur *joueur){
+    fprintf(joueur->file_ptr, "Vos cartes : ");
+    for(int j=0;j<joueur->nbCarte;j++)
+        fprintf(joueur->file_ptr, "%d ", joueur->cartes[j]);
+    fprintf(joueur->file_ptr, "\n");
 }
 
-//! Verifie si le client possède la carte choisie
+//! Verifie si le joueur possède la carte choisie
 /*!
-    \param client pointeur sur la structure client
+    \param joueur pointeur sur la structure joueur
     \param choixCarte carte à verifier
-    \return true si le client possède la carte sinon false
+    \return true si le joueur possède la carte sinon false
 */
-bool isCarteValid(client *client,int choixCarte)
+bool isCarteValid(joueur *joueur,int choixCarte)
 {
     bool res=false;
     for(int i=0; i<10; i++)
     {
-        if(choixCarte==client->cartes[i])
+        if(choixCarte==joueur->cartes[i])
             res=true;
     }
     return res;
@@ -407,14 +407,14 @@ int indicePlusPetiteCarte(int* cartes, int nbCartes){
 }
 
 
-//! Fonction principale de jeu, ajoute la carte joué à l'une des piles et retourne le nombre de tête de boeufs recuperées par le joueur
+//! Fonction principale de jeu, ajoute la carte jouée à l'une des piles et retourne le nombre de tête de boeufs recuperées par le joueur
 /*!
     \param piles pointeur sur le tableau contenant les pointeurs vers les piles 
     \param carte carte à jouer
-    \param cli le client qui joue 
+    \param joueur le joueur qui joue 
     \return le nombre de tête de boeufs 
 */
-int jouerCarte(int** piles, int carte, client* cli){
+int jouerCarte(int** piles, int carte, joueur* joueur){
 
     char *ret_fgets = NULL;
     char client_input[SIZE_INPUT_USER];
@@ -441,7 +441,7 @@ int jouerCarte(int** piles, int carte, client* cli){
 
     /* Si la carte est inférieur à tout -> demande la pile à remplacer au client/remplace la pile avec le moins de tête pour le bot et retourne le nombre de têtes */
     if(indiceCarte == 10 && indicePile==10){
-        if(cli->isBot){
+        if(joueur->isBot){
             int pointsPile = compterPointPile(piles[0]);
             int indicePile = 0;
             for(int i=1;i<4;i++){
@@ -455,10 +455,10 @@ int jouerCarte(int** piles, int carte, client* cli){
             return pointsPile;
         }else{
             int choixPile;
-            envoyerPiles(piles, cli);
+            envoyerPiles(piles, joueur);
             do{
-                fprintf(cli->file_ptr, "Saisir la pile à enlever (1-4) : ");
-                ret_fgets= fgets(client_input, SIZE_INPUT_USER,cli->file_ptr);
+                fprintf(joueur->file_ptr, "Saisir la pile à enlever (1-4) : ");
+                ret_fgets= fgets(client_input, SIZE_INPUT_USER,joueur->file_ptr);
                 choixPile = atol(client_input);
             }while(choixPile<1 || choixPile>4);
             ret_fgets = NULL;
@@ -481,21 +481,21 @@ int jouerCarte(int** piles, int carte, client* cli){
 
 //! Retire la carte de la main du client
 /*!
-    \param client pointeur sur la structure client
-    \param carte carte a enlever de la main du client
+    \param joueur pointeur sur la structure joueur
+    \param carte carte a enlever de la main du joueur
 */
-void retirerCarte(client *client, int carte){
-    int* temp = (int*)calloc(client->nbCarte-1, sizeof(int));
+void retirerCarte(joueur *joueur, int carte){
+    int* temp = (int*)calloc(joueur->nbCarte-1, sizeof(int));
     int cpt = 0;
-    for(int i=0;i<client->nbCarte;i++){
-        if(client->cartes[i]!=carte){
-            temp[cpt]=client->cartes[i];
+    for(int i=0;i<joueur->nbCarte;i++){
+        if(joueur->cartes[i]!=carte){
+            temp[cpt]=joueur->cartes[i];
             cpt++;
         }
     }
-    free(client->cartes);
-    client->cartes = temp;  
-    client->nbCarte--;
+    free(joueur->cartes);
+    joueur->cartes = temp;  
+    joueur->nbCarte--;
 }
 
 //! Compte les points dans une pile
@@ -559,11 +559,11 @@ void ajouterCartePile(int* pile, int carte){
     pile[i]=carte;
 }
 
-//! Envoie le classement aux joueurs 
+//! Envoie le classement aux clients
 /*!
-    \param in pointeur sur la structure clientArray
+    \param in pointeur sur la structure joueurArray
 */
-void envoyerClassement(clientArray *in){
+void envoyerClassement(joueurArray *in){
     for(int i=0;i<in->size;i++){
         int indice = 1;
         for(int j=0;j<in->size;j++){
@@ -580,22 +580,22 @@ void envoyerClassement(clientArray *in){
     }
 }
 
-//! Distribue les cartes du paquet aux clients
+//! Distribue les cartes du paquet aux joueurs
 /*!
-    \param c pointeur sur la structure client
+    \param joueur pointeur sur la structure joueur
     \param paquet pointeur sur le paquet
 */
-void distribuerCartes(client *c, int* paquet){
-    if(c->cartes!=NULL)
-        free(c->cartes);
-    c->cartes = (int*)malloc(10*sizeof(int));
-    c->nbCarte=10;
+void distribuerCartes(joueur *joueur, int* paquet){
+    if(joueur->cartes!=NULL)
+        free(joueur->cartes);
+    joueur->cartes = (int*)malloc(10*sizeof(int));
+    joueur->nbCarte=10;
     int count=0;
     for(int j=0;j<DECK_SIZE;j++)
     {
         if(paquet[j]!=0 && count<10)
         {
-            c->cartes[count]=paquet[j];
+            joueur->cartes[count]=paquet[j];
             paquet[j]=0;
             count++;
         }
@@ -634,12 +634,12 @@ int* creerPaquet(){
 }
 
 
-//! Demande aux joueurs pour une potentielle nouvelle partie
+//! Demande aux clients pour une potentielle nouvelle partie
 /*!
-    \param in pointeur sur la structure clientArray
-    \return true si tous les joueurs veulent rejouer sinon false
+    \param in pointeur sur la structure joueurArray
+    \return true si tous les clients veulent rejouer sinon false
 */
-bool checkNewGame(clientArray *in){
+bool checkNewGame(joueurArray *in){
     pthread_t *lst = malloc(sizeof(pthread_t)*in->nb_client);
     int check;
     if(lst==NULL)FATAL();
@@ -662,13 +662,13 @@ bool checkNewGame(clientArray *in){
 
 //! thread demande valeur y ou n aux client
 /*!
-  \param ptrClient pointeur sur la structure client
+  \param ptrClient pointeur sur la structure joueur
   \return return pointeur sur le char
 */
 void *pthreadAskClient(void *ptrClient){
   char *reponse = malloc(sizeof(char)*3);
   memset(reponse,0,3);
-  client *cli=(client *)ptrClient;
+  joueur *cli=(joueur *)ptrClient;
   if(reponse==NULL) FATAL();
   do {
     fprintf(cli->file_ptr,"\e[1;1H\e[2JVoulez vous rejouer une partie ?(y/n): ");
@@ -677,13 +677,13 @@ void *pthreadAskClient(void *ptrClient){
   pthread_exit((void *)reponse);
 }
 
-//! Demande les cartes à jouer aux joueurs
+//! Demande les cartes à jouer aux clients
 /*!
-    \param in pointeur sur la structure clientArray
+    \param in pointeur sur la structure joueurArray
     \param cartesTour pointeur sur le tableau contenant les cartes du tour
     \return true si tous les joueurs veulent rejouer sinon false
 */
-void demanderCartes(clientArray *in, int* cartesTour){
+void demanderCartes(joueurArray *in, int* cartesTour){
     pthread_t *lst = malloc(sizeof(pthread_t)*in->nb_client);
     int check;
     if(lst==NULL)FATAL();
@@ -706,14 +706,14 @@ void demanderCartes(clientArray *in, int* cartesTour){
 
 //! thread demande la carte à jouer au client
 /*!
-  \param ptrClient pointeur sur la structure client
+  \param ptrClient pointeur sur la structure joueur
   \return return pointeur sur la reponse
 */
 void *pthreadDemanderCartes(void *ptrClient){
   char *reponse = malloc(sizeof(char)*SIZE_INPUT_USER);
   int rep;
   memset(reponse,0,SIZE_INPUT_USER);
-  client *cli=(client *)ptrClient;
+  joueur *cli=(joueur *)ptrClient;
   if(reponse==NULL) FATAL();
   do {
     fprintf(cli->file_ptr,"Saisir la carte à jouer : ");
