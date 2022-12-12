@@ -20,6 +20,7 @@ void acceptClient(int serverSock,joueurArray *joueurArr, size_t nb);
 void *pthreadInitClient(void *ptrClient); 
 void freejoueurArray(joueurArray *in); 
 void envoyerPiles(int** mat, joueur *joueur); 
+void affichePiles(HPDF_Page page,int** mat); 
 void envoyerMain(joueur *joueur); 
 void envoyerCartesJouees(joueur* joueur, joueurArray* lstJoueur, int* cartesTourPrec, int indice);
 void demanderCartes(joueurArray *in, int* cartesTour); 
@@ -70,7 +71,7 @@ int main(int argc, char const *argv[]){
     HPDF_Page_BeginText (page);
     HPDF_Page_TextOut (page, (width - tw) / 2, height - 50, page_title);
     HPDF_Page_EndText (page);
-    HPDF_Page_SetFontAndSize (page, font, 16);
+    HPDF_Page_SetFontAndSize (page, font, 10);
     HPDF_Page_BeginText(page);
     HPDF_Page_MoveTextPos (page, 60, height - 80);
 
@@ -92,10 +93,15 @@ int main(int argc, char const *argv[]){
     acceptClient(sock, lstJoueur, nb_client);
 
 
-    /* Clients receptionnés */
+    /* Clients receptionnés */    
+    HPDF_Page_ShowText(page, "Liste Joueurs : ");
     for (size_t i = 0; i < lstJoueur->size; i++) {
         printf("Client %lu : %s\n",i,lstJoueur->lst[i].name);
+        HPDF_Page_ShowText(page, lstJoueur->lst[i].name);
+        HPDF_Page_ShowText(page, " ");
     }
+    HPDF_Page_MoveTextPos(page, 0, -8);
+    addLinePdf(page,"Piles : ");        
 
     /* init paquet, piles, cartesTour */
     int* paquet;
@@ -117,7 +123,7 @@ int main(int argc, char const *argv[]){
 
         /* manche loop */
         do{    
-            affichePiles(piles); 
+            affichePiles(page,piles);
 
             /* Envoie les piles, la main et le nombre de tête de boeufs à chaque client */
             for (size_t i = 0; i < lstJoueur->nb_client; i++) {
@@ -163,11 +169,9 @@ int main(int argc, char const *argv[]){
         free(cartesTour);
         free(cartesTourPrec);
         sleep(2);
+        HPDF_Page_EndText(page);
+        savePdf(pdf);
     }while(checkNewGame(lstJoueur)==true); //Verifie si tous les clients veulent rejouer
-
-    HPDF_Page_EndText(page);
-    savePdf(pdf);
-
     /* Signal la fin de la partie et leur classement à chacun des clients */
     for(int k=0;k<lstJoueur->nb_client;k++){
             fprintf(lstJoueur->lst[k].file_ptr, "Fin de la partie !\n");
@@ -530,10 +534,37 @@ int jouerCarte(int** piles, int carte, joueur* joueur){
     }
 }
 
+//! Affichage des piles 
+/*!
+    \param mat pointeur sur le tableau contenant les pointeurs vers les piles 
+*/
+void affichePiles(HPDF_Page page, int** mat)
+{
+    for(int i=0; i<4; i++)
+    {
+        char* ligne = (char*)malloc(30*sizeof(char));
+        for(int j=0; j<6; j++)
+        {
+            printf(" %d", mat[i][j]);
+            char* c = (char*)malloc(5*sizeof(char));        
+            sprintf(c,"%d ",mat[i][j]);
+            strcat(ligne,c);
+            strcat(ligne," ");
+            free(c);
+        }
+        addLinePdf(page, ligne);
+        free(ligne);
+        printf("\n");
+    }
+    HPDF_Page_ShowText(page, "------------------------");
+    HPDF_Page_MoveTextPos(page, 0, -10);
+    printf("\n");
+}
+
 void addLinePdf(HPDF_Page page, char* str)
 {
     HPDF_Page_ShowText(page, str);
-    HPDF_Page_MoveTextPos(page, 0, -20);
+    HPDF_Page_MoveTextPos(page, 0, -10);
 }
 
 void savePdf(HPDF_Doc pdf)
@@ -545,3 +576,4 @@ void savePdf(HPDF_Doc pdf)
     /* clean up */
     HPDF_Free (pdf);
 }
+

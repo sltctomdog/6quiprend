@@ -3,7 +3,6 @@
 void shuffle(int *array, size_t length);
 int** creerPiles(int* paquet); 
 void detruitPiles(int** m); 
-void affichePiles(int** mat); 
 bool isCarteValid(joueur *joueur,int choixCarte); 
 int indicePlusPetiteCarte(int* cartes, int nbCartes); 
 void retirerCarte(joueur *joueur, int carte); 
@@ -64,22 +63,6 @@ void detruitPiles(int** m)
     free(m);
 }
 
-//! Affichage des piles 
-/*!
-    \param mat pointeur sur le tableau contenant les pointeurs vers les piles 
-*/
-void affichePiles(int** mat)
-{
-    for(int i=0; i<4; i++)
-    {
-        for(int j=0; j<6; j++)
-        {
-            printf(" %d", mat[i][j]);
-        }
-        printf("\n");
-    }
-    printf("\n");
-}
 //! Verifie si le joueur possède la carte choisie
 /*!
     \param joueur pointeur sur la structure joueur
