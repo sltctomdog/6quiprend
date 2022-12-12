@@ -1,66 +1,36 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <errno.h>
-#include <stdlib.h> 
-#include <time.h>   
-#include <pthread.h>
-#include <fcntl.h>
-#include <stdbool.h>
+#include "game.c"
+#include "utils.c"
+#include "hpdf.h"
+#include <setjmp.h>
+jmp_buf env;
+#ifdef HPDF_DLL
+void  __stdcall
+#else
+void
+#endif
+error_handler  (HPDF_STATUS   error_no, HPDF_STATUS   detail_no, void *user_data)
+{
+    printf ("ERROR: error_no=%04X, detail_no=%u\n", (HPDF_UINT)error_no,(HPDF_UINT)detail_no);
+    longjmp(env, 1);
+}
 
-#define FATAL(){fprintf(stderr,"%s\n",strerror(errno));exit(errno);}
-#define PORT 4440
-#define SIZE_INPUT_USER 5
-#define SIZE_NAME 50
-#define DECK_SIZE 104
+int createSock();  
+joueurArray* createjoueurArray(size_t max_joueur, size_t nb_bot); 
+void acceptClient(int serverSock,joueurArray *joueurArr, size_t nb); 
+void *pthreadInitClient(void *ptrClient); 
+void freejoueurArray(joueurArray *in); 
+void envoyerPiles(int** mat, joueur *joueur); 
+void envoyerMain(joueur *joueur); 
+void demanderCartes(joueurArray *in, int* cartesTour); 
+void *pthreadDemanderCartes(void *ptrClient); 
+void envoyerClassement(joueurArray *in); 
+bool checkNewGame(joueurArray *in); 
+void *pthreadAskClient(void *ptrClient); 
+int jouerCarte(int** piles, int carte, joueur* joueur); 
 
-typedef struct{
-    char name[SIZE_NAME];
-    int *cartes;
-    FILE *file_ptr;
-    size_t nbCarte;
-    size_t teteBoeuf;
-    bool isBot;
-}joueur;
-
-typedef struct{
-  joueur *lst;
-  size_t size;
-  size_t nb_client;
-} joueurArray;
-
-int createSock();  //gestionServeur 
-joueurArray* createjoueurArray(size_t max_joueur, size_t nb_bot); //gestionServeur 
-void acceptClient(int serverSock,joueurArray *joueurArr, size_t nb); //gestionServeur 
-void *pthreadInitClient(void *ptrClient); //gestionServeur 
-void freejoueurArray(joueurArray *in); //gestionServeur 
-void shuffle(int *array, size_t length); //gestionJeu
-int** creerPiles(int* paquet); //gestionJeu
-void detruitPiles(int** m); //gestionJeu
-void affichePiles(int** mat); //gestionJeu
-void envoyerPiles(int** mat, joueur *joueur); //gestionServeur 
-void envoyerMain(joueur *joueur); //gestionServeur 
-void demanderCartes(joueurArray *in, int* cartesTour); //gestionServeur 
-void *pthreadDemanderCartes(void *ptrClient); //gestionServeur 
-bool isCarteValid(joueur *joueur,int choixCarte); //gestionJeu 
-int indicePlusPetiteCarte(int* cartes, int nbCartes); //gestionJeu
-int jouerCarte(int** piles, int carte, joueur* joueur); //gestionJeu
-void retirerCarte(joueur *joueur, int carte); //gestionJeu 
-int compterPointPile(int* pile); //gestionJeu 
-void resetPile(int* pile, int carte); //gestionJeu
-int compterCartePile(int* pile); //gestionJeu
-void ajouterCartePile(int* pile, int carte); //gestionJeu
-void envoyerClassement(joueurArray *in); //gestionServeur  
-void distribuerCartes(joueur *joueur, int* paquet); //gestionJeu
-void initPiles(int** piles, int* paquet); //gestionJeu
-int* creerPaquet(); //gestionJeu
-bool checkNewGame(joueurArray *in); //gestionServeur 
-void *pthreadAskClient(void *ptrClient); //gestionServeur 
+void initPdf();
+void addLinePdf(HPDF_Page, char*);
+void savePdf(HPDF_Doc);
 
 
 int main(int argc, char const *argv[]){
@@ -69,7 +39,41 @@ int main(int argc, char const *argv[]){
     return 1;
     }
 
-    /* init joueurs */
+    /* CREATION PDF */
+    const char* page_title = "6quiprend";
+    HPDF_Doc pdf = HPDF_New(error_handler, NULL);
+    HPDF_Font font = HPDF_GetFont(pdf, "Helvetica", NULL);
+    HPDF_Page page = HPDF_AddPage(pdf);
+    HPDF_REAL height = HPDF_Page_GetHeight(page);
+    HPDF_REAL width = HPDF_Page_GetWidth(page);
+    HPDF_REAL tw;
+
+    /* GESTION D'ERREUR */
+    if (!pdf) {
+        printf ("error: cannot create PdfDoc object\n");
+        FATAL();
+    }
+    if (setjmp(env)) {
+        HPDF_Free (pdf);
+        FATAL();
+    }
+
+    /* Affiche le cadre */
+    HPDF_Page_SetLineWidth (page, 1);
+    HPDF_Page_Rectangle (page, 50, 50, width - 100, height - 110);
+    HPDF_Page_Stroke (page);
+
+    /* Affiche le titre */
+    HPDF_Page_SetFontAndSize (page, font, 24);
+    tw = HPDF_Page_TextWidth (page, page_title);
+    HPDF_Page_BeginText (page);
+    HPDF_Page_TextOut (page, (width - tw) / 2, height - 50, page_title);
+    HPDF_Page_EndText (page);
+    HPDF_Page_SetFontAndSize (page, font, 16);
+    HPDF_Page_BeginText(page);
+    HPDF_Page_MoveTextPos (page, 60, height - 80);
+
+    /* INIT JOUEURS */
     size_t nb_client;
     size_t nb_bot;
     nb_client = atol(argv[1]);
@@ -83,7 +87,7 @@ int main(int argc, char const *argv[]){
     printf("Nombre de clients : %lu\n", nb_client);
     printf("Nombre de bots : %lu\n", nb_bot);
     printf("En attente des clients ...\n");
-    lstJoueur =createjoueurArray(nb_client+nb_bot, nb_client);
+    lstJoueur = createjoueurArray(nb_client+nb_bot, nb_client);
     acceptClient(sock, lstJoueur, nb_client);
 
 
@@ -149,6 +153,9 @@ int main(int argc, char const *argv[]){
         sleep(2);
     }while(checkNewGame(lstJoueur)==true); //Verifie si tous les clients veulent rejouer
 
+    HPDF_Page_EndText(page);
+    savePdf(pdf);
+
     /* Signal la fin de la partie et leur classement à chacun des clients */
     for(int k=0;k<lstJoueur->nb_client;k++){
             fprintf(lstJoueur->lst[k].file_ptr, "Fin de la partie !\n");
@@ -173,6 +180,12 @@ int createSock(){
     sin.sin_addr.s_addr = htonl(INADDR_ANY);
     sin.sin_family = AF_INET;
     sin.sin_port = htons(PORT);
+
+    // Autoriser la réutilisation du port pour pouvoir immédiatement réouvrir un serveur,
+	// quand un vient d'être fermé.
+	int reuseAddr = 1;
+	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseAddr, sizeof(int));
+
     if (bind(sock, (struct sockaddr*)&sin, recsize) == -1) {
         fprintf(stderr,"%s\n", strerror(errno));
         exit(errno);
@@ -278,71 +291,6 @@ void freejoueurArray(joueurArray *in){
     return;
 }
 
-//! Mélange du paquet 
-/*!
-    \param array pointeur sur le tableau representant le paquet 
-    \param lenght taille du paquet
-*/
-void shuffle(int *array, size_t length)
-{
-    int i,j,temp;
-
-    srand(time(NULL));
-
-    for(i = 0; i < DECK_SIZE; i++)
-    {
-        j = (rand()%DECK_SIZE-1)+1;
-        temp = array[i];
-        array[i] = array[j];
-        array[j] = temp;
-    }
-}
-
-//! Création des 4 piles de jeu
-/*!
-    \param paquet pointeur sur le tableau representant le paquet
-    \return pointeur sur le tableau contenant les pointeurs vers les piles 
-*/
-int** creerPiles(int* paquet)
-{
-    int** mat = (int**)malloc(4*sizeof(int*));
-    for(int i=0; i<4; i++)
-    {
-        mat[i] = (int*)calloc(6, sizeof(int));
-    }
-    initPiles(mat, paquet);
-    return mat;
-}
-
-//! Déallocation de la mémoire pour les piles
-/*!
-    \param m pointeur sur le tableau contenant les pointeurs vers les piles 
-*/
-void detruitPiles(int** m)
-{
-    for(int i=0; i<4; i++)
-    {
-        free(m[i]);
-    }
-    free(m);
-}
-
-//! Affichage des piles 
-/*!
-    \param mat pointeur sur le tableau contenant les pointeurs vers les piles 
-*/
-void affichePiles(int** mat)
-{
-    for(int i=0; i<4; i++)
-    {
-        for(int j=0; j<6; j++)
-        {
-            printf(" %d", mat[i][j]);
-        }
-        printf("\n");
-    }
-}
-
 //! Envoie les cartes des piles au clients 
 /*!
     \param mat pointeur sur le tableau contenant les pointeurs vers les piles 
@@ -371,194 +319,6 @@ void envoyerMain(joueur *joueur){
     fprintf(joueur->file_ptr, "\n");
 }
 
-//! Verifie si le joueur possède la carte choisie
-/*!
-    \param joueur pointeur sur la structure joueur
-    \param choixCarte carte à verifier
-    \return true si le joueur possède la carte sinon false
-*/
-bool isCarteValid(joueur *joueur,int choixCarte)
-{
-    bool res=false;
-    for(int i=0; i<10; i++)
-    {
-        if(choixCarte==joueur->cartes[i])
-            res=true;
-    }
-    return res;
-}
-
-//! Indice de la plus petite carte jouée
-/*!
-    \param cartes pointeur sur le tableau des cartes jouées 
-    \param nbCartes nombre de cartes jouées
-    \return indice de la plus petite carte dans le tableau 
-*/
-int indicePlusPetiteCarte(int* cartes, int nbCartes){
-    int indice = 0;
-    int valeur = 1000;
-    for(int i=0;i<nbCartes;i++){
-        if(cartes[i]<valeur && cartes[i]!=0){
-            indice=i;
-            valeur=cartes[i];
-        }           
-    }
-    return indice;
-}
-
-
-//! Fonction principale de jeu, ajoute la carte jouée à l'une des piles et retourne le nombre de tête de boeufs recuperées par le joueur
-/*!
-    \param piles pointeur sur le tableau contenant les pointeurs vers les piles 
-    \param carte carte à jouer
-    \param joueur le joueur qui joue 
-    \return le nombre de tête de boeufs 
-*/
-int jouerCarte(int** piles, int carte, joueur* joueur){
-
-    char *ret_fgets = NULL;
-    char client_input[SIZE_INPUT_USER];
-
-    int indicePile = 10;
-    int indiceCarte = 10;
-    int valDiff = 1000;
-
-    for(int i=0;i<4;i++){
-        int posCarte = 0;
-        for(int j=0;j<6;j++){
-            /* Recup la position de la derniere carte de la pile */
-            if(piles[i][j]!=0){            
-                posCarte+=1;
-            }
-        }
-        /* Cherche la difference entre la dernire carte de la pile et la carte jouee la plus petite des 4 piles */
-        if(carte>piles[i][posCarte-1] && (carte-piles[i][posCarte-1]<valDiff)){
-            valDiff = carte-piles[i][posCarte-1];
-            indicePile = i;
-            indiceCarte = posCarte - 1;
-        }
-    }
-
-    /* Si la carte est inférieur à tout -> demande la pile à remplacer au client/remplace la pile avec le moins de tête pour le bot et retourne le nombre de têtes */
-    if(indiceCarte == 10 && indicePile==10){
-        if(joueur->isBot){
-            int pointsPile = compterPointPile(piles[0]);
-            int indicePile = 0;
-            for(int i=1;i<4;i++){
-                int points = compterPointPile(piles[i]);
-                if(pointsPile>points){
-                    pointsPile = points;
-                    indicePile = i;
-                }
-            }
-            resetPile(piles[indicePile], carte);
-            return pointsPile;
-        }else{
-            int choixPile;
-            envoyerPiles(piles, joueur);
-            do{
-                fprintf(joueur->file_ptr, "Saisir la pile à enlever (1-4) : ");
-                ret_fgets= fgets(client_input, SIZE_INPUT_USER,joueur->file_ptr);
-                choixPile = atol(client_input);
-            }while(choixPile<1 || choixPile>4);
-            ret_fgets = NULL;
-            int pointsPile = compterPointPile(piles[choixPile-1]);
-            resetPile(piles[choixPile-1], carte);
-            return pointsPile;
-        }    
-    }
-
-    /* Si moins de 6 cartes dans la pile, ajoute la carte  */
-    if(compterCartePile(piles[indicePile])<5){
-        ajouterCartePile(piles[indicePile], carte);
-        return 0;
-    }else{ // sinon compte les points de la pile, reset la pile (donc ajoute la carte), retourne le nombre de tête
-        int pointsPile = compterPointPile(piles[indicePile]);
-        resetPile(piles[indicePile], carte);
-        return pointsPile;
-    }
-}
-
-//! Retire la carte de la main du client
-/*!
-    \param joueur pointeur sur la structure joueur
-    \param carte carte a enlever de la main du joueur
-*/
-void retirerCarte(joueur *joueur, int carte){
-    int* temp = (int*)calloc(joueur->nbCarte-1, sizeof(int));
-    int cpt = 0;
-    for(int i=0;i<joueur->nbCarte;i++){
-        if(joueur->cartes[i]!=carte){
-            temp[cpt]=joueur->cartes[i];
-            cpt++;
-        }
-    }
-    free(joueur->cartes);
-    joueur->cartes = temp;  
-    joueur->nbCarte--;
-}
-
-//! Compte les points dans une pile
-/*!
-    \param pile pointeur sur une pile 
-    \return le nombre de tête de boeufs dans la pile 
-*/
-int compterPointPile(int* pile){
-    int sommePoints = 0;
-    for(int i=0;i<6;i++){
-        if(pile[i]!=0){
-            if(pile[i]==55){
-                sommePoints+=7;
-            }else if(pile[i]%10==0){
-                sommePoints+=3;
-            }else if(pile[i]%5==0){
-                sommePoints+=2;
-            }else if(pile[i]%11==0){
-                sommePoints+=5;
-            }else{
-                sommePoints+=1;
-            }
-        }
-    }
-    return sommePoints;
-}
-
-//! Enleve les cartes d'une pile et remplace la première carte par celle choisie 
-/*!
-    \param pile pointeur sur une pile
-    \param carte la carte à mettre au début de la pile
-*/
-void resetPile(int* pile, int carte){
-    for(int i=0; i<6;i++){
-        pile[i] = 0;
-    }
-    pile[0] = carte;
-}
-
-//! Compte le nombre da carte dans une pile
-/*!
-    \param pile pointeur sur une pile
-*/
-int compterCartePile(int* pile){
-    int cpt=0;
-    for(int i=0;i<6;i++){
-        if(pile[i]!=0){
-            cpt++;
-        }
-    }
-    return cpt;
-}
-
-//! Ajoute une carte à une pile
-/*!
-    \param pile pointeur vers une pile
-    \param carte la carte à ajouter à la pile 
-*/
-void ajouterCartePile(int* pile, int carte){
-    int i = compterCartePile(pile);
-    pile[i]=carte;
-}
-
 //! Envoie le classement aux clients
 /*!
     \param in pointeur sur la structure joueurArray
@@ -579,60 +339,6 @@ void envoyerClassement(joueurArray *in){
         }        
     }
 }
-
-//! Distribue les cartes du paquet aux joueurs
-/*!
-    \param joueur pointeur sur la structure joueur
-    \param paquet pointeur sur le paquet
-*/
-void distribuerCartes(joueur *joueur, int* paquet){
-    if(joueur->cartes!=NULL)
-        free(joueur->cartes);
-    joueur->cartes = (int*)malloc(10*sizeof(int));
-    joueur->nbCarte=10;
-    int count=0;
-    for(int j=0;j<DECK_SIZE;j++)
-    {
-        if(paquet[j]!=0 && count<10)
-        {
-            joueur->cartes[count]=paquet[j];
-            paquet[j]=0;
-            count++;
-        }
-    }
-}
-
-
-//! Initialise les piles
-/*!
-    \param piles pointeur sur le tableau contenant les pointeurs vers les piles 
-    \param paquet pointeur sur le paquet
-*/
-void initPiles(int** piles, int* paquet){
-    int count=0;
-    for(int i=0; i<DECK_SIZE; i++)
-    {
-        if(paquet[i]!=0 && count<4)
-        {
-            piles[count][0]=paquet[i];
-            paquet[i]=0;
-            count++;
-        }
-    }
-}
-
-//! Créer le paquet de carte 
-/*!
-    \return pointeur sur le paquet 
-*/
-int* creerPaquet(){
-    int* ret = (int*)malloc(DECK_SIZE*sizeof(int));;
-    for(int i=0; i<DECK_SIZE;i++)
-        ret[i]=i+1;
-    shuffle(ret,DECK_SIZE);
-    return ret;
-}
-
 
 //! Demande aux clients pour une potentielle nouvelle partie
 /*!
@@ -721,4 +427,93 @@ void *pthreadDemanderCartes(void *ptrClient){
     rep = atol(reponse);
   } while(rep<1 || rep>104 || !isCarteValid(ptrClient,rep));
   pthread_exit((void *)reponse);
+}
+
+
+//! Fonction principale de jeu, ajoute la carte jouée à l'une des piles et retourne le nombre de tête de boeufs recuperées par le joueur
+/*!
+    \param piles pointeur sur le tableau contenant les pointeurs vers les piles 
+    \param carte carte à jouer
+    \param joueur le joueur qui joue 
+    \return le nombre de tête de boeufs 
+*/
+int jouerCarte(int** piles, int carte, joueur* joueur){
+
+    char *ret_fgets = NULL;
+    char client_input[SIZE_INPUT_USER];
+
+    int indicePile = 10;
+    int indiceCarte = 10;
+    int valDiff = 1000;
+
+    for(int i=0;i<4;i++){
+        int posCarte = 0;
+        for(int j=0;j<6;j++){
+            /* Recup la position de la derniere carte de la pile */
+            if(piles[i][j]!=0){            
+                posCarte+=1;
+            }
+        }
+        /* Cherche la difference entre la dernire carte de la pile et la carte jouee la plus petite des 4 piles */
+        if(carte>piles[i][posCarte-1] && (carte-piles[i][posCarte-1]<valDiff)){
+            valDiff = carte-piles[i][posCarte-1];
+            indicePile = i;
+            indiceCarte = posCarte - 1;
+        }
+    }
+
+    /* Si la carte est inférieur à tout -> demande la pile à remplacer au client/remplace la pile avec le moins de tête pour le bot et retourne le nombre de têtes */
+    if(indiceCarte == 10 && indicePile==10){
+        if(joueur->isBot){
+            int pointsPile = compterPointPile(piles[0]);
+            int indicePile = 0;
+            for(int i=1;i<4;i++){
+                int points = compterPointPile(piles[i]);
+                if(pointsPile>points){
+                    pointsPile = points;
+                    indicePile = i;
+                }
+            }
+            resetPile(piles[indicePile], carte);
+            return pointsPile;
+        }else{
+            int choixPile;
+            envoyerPiles(piles, joueur);
+            do{
+                fprintf(joueur->file_ptr, "Saisir la pile à enlever (1-4) : ");
+                ret_fgets= fgets(client_input, SIZE_INPUT_USER,joueur->file_ptr);
+                choixPile = atol(client_input);
+            }while(choixPile<1 || choixPile>4);
+            ret_fgets = NULL;
+            int pointsPile = compterPointPile(piles[choixPile-1]);
+            resetPile(piles[choixPile-1], carte);
+            return pointsPile;
+        }    
+    }
+
+    /* Si moins de 6 cartes dans la pile, ajoute la carte  */
+    if(compterCartePile(piles[indicePile])<5){
+        ajouterCartePile(piles[indicePile], carte);
+        return 0;
+    }else{ // sinon compte les points de la pile, reset la pile (donc ajoute la carte), retourne le nombre de tête
+        int pointsPile = compterPointPile(piles[indicePile]);
+        resetPile(piles[indicePile], carte);
+        return pointsPile;
+    }
+}
+
+void addLinePdf(HPDF_Page page, char* str)
+{
+    HPDF_Page_ShowText(page, str);
+    HPDF_Page_MoveTextPos(page, 0, -20);
+}
+
+void savePdf(HPDF_Doc pdf)
+{
+    char filename[25];
+    strcpy (filename, "test.pdf");
+    HPDF_SaveToFile (pdf, filename);
+
+    /* clean up */
+    HPDF_Free (pdf);
 }
