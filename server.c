@@ -21,6 +21,7 @@ void *pthreadInitClient(void *ptrClient);
 void freejoueurArray(joueurArray *in); 
 void envoyerPiles(int** mat, joueur *joueur); 
 void envoyerMain(joueur *joueur); 
+void envoyerCartesJouees(joueur* joueur, joueurArray* lstJoueur, int* cartesTourPrec, int indice);
 void demanderCartes(joueurArray *in, int* cartesTour); 
 void *pthreadDemanderCartes(void *ptrClient); 
 void envoyerClassement(joueurArray *in); 
@@ -100,6 +101,7 @@ int main(int argc, char const *argv[]){
     int* paquet;
     int** piles;
     int* cartesTour;
+    int* cartesTourPrec;
     
     /* game loop */
     do{
@@ -111,6 +113,8 @@ int main(int argc, char const *argv[]){
         }
         piles = creerPiles(paquet);    
         cartesTour = (int*)calloc(lstJoueur->size, sizeof(int));
+        cartesTourPrec = (int*)calloc(lstJoueur->size, sizeof(int));
+
         /* manche loop */
         do{    
             affichePiles(piles); 
@@ -118,6 +122,8 @@ int main(int argc, char const *argv[]){
             /* Envoie les piles, la main et le nombre de tête de boeufs à chaque client */
             for (size_t i = 0; i < lstJoueur->nb_client; i++) {
                     envoyerPiles(piles, &lstJoueur->lst[i]);
+                    if(cartesTourPrec[0]!=0)
+	                    envoyerCartesJouees(&lstJoueur->lst[i], lstJoueur, cartesTourPrec, i);
                     fprintf(lstJoueur->lst[i].file_ptr, "Vous avez <%d> tetes de boeufs\n", lstJoueur->lst[i].teteBoeuf);
                     envoyerMain(&lstJoueur->lst[i]);
             }
@@ -129,6 +135,11 @@ int main(int argc, char const *argv[]){
             for(int i=lstJoueur->nb_client;i<lstJoueur->size;i++){
                 cartesTour[i]=lstJoueur->lst[i].cartes[0];
             }
+
+            /* Stock les cartes jouées pour pouvoir les afficher aux clients après le round*/
+            for(int j=0;j<lstJoueur->size;j++){
+                cartesTourPrec[j]=cartesTour[j];
+            };
 
             /* Joue la carte de chaque joueur dans le bon ordre */
             for(int j=0;j<lstJoueur->size;j++){
@@ -150,6 +161,7 @@ int main(int argc, char const *argv[]){
         detruitPiles(piles);
         free(paquet);
         free(cartesTour);
+        free(cartesTourPrec);
         sleep(2);
     }while(checkNewGame(lstJoueur)==true); //Verifie si tous les clients veulent rejouer
 
@@ -317,6 +329,22 @@ void envoyerMain(joueur *joueur){
     for(int j=0;j<joueur->nbCarte;j++)
         fprintf(joueur->file_ptr, "%d ", joueur->cartes[j]);
     fprintf(joueur->file_ptr, "\n");
+}
+
+//! Envoie les cartes jouées au tour précédent 
+/*!
+    \param joueur pointeur sur la structure joueur
+    \param lstJoueur pointeur sur la structure lstJoueur
+    \param cartesTourPrec les cartes du tour précédent
+    \param indice indice du joueur dans la lstJoueur
+*/
+
+void envoyerCartesJouees(joueur* joueur, joueurArray* lstJoueur, int* cartesTourPrec, int indice){
+    for(int i=0;i<lstJoueur->size;i++){
+        if(i!=indice){
+            fprintf(joueur->file_ptr,"-%s a joué la carte %d\n", lstJoueur->lst[i].name, cartesTourPrec[i]);
+        }
+    }
 }
 
 //! Envoie le classement aux clients
