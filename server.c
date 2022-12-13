@@ -222,14 +222,14 @@ joueurArray* createjoueurArray(size_t max_joueur, size_t nb_client){
     int indice = 0;
     for(int i=nb_client;i<max_joueur;i++){
         ret->lst[i].isBot = true;
-        strcpy(ret->lst[i].name, "BobLeBot");
-        char nom[10];
+        char* nom = (char*)malloc(10*sizeof(char));
         memset(nom, 0, 10);
         strcpy(nom, "BobLeBot");
         strcat(nom, &c[indice]);
         nom[9]='\0';
         strcpy(ret->lst[i].name, nom);
         indice++;
+        free(nom);
     }
     ret->size = max_joueur;
     ret->nb_client=nb_client;
