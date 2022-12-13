@@ -19,7 +19,7 @@
 #define SIZE_INPUT_USER 5
 #define SIZE_NAME 50
 #define DECK_SIZE 104
-
+#define SERVER_IP "127.0.0.1"
 
 typedef struct{
     char name[SIZE_NAME];

@@ -1,18 +1,4 @@
-#include "utils.c"
-
-#define SERVER_IP "127.0.0.1"
-#define SERVER_PORT 4440
-
-void *afficheAll(void *sock){
-    int s=*(int *)sock;
-    char buff[256] = {0};
-    while (true){
-        memset(buff, 0x0, 256);
-        recv(s,buff, 256, 0);
-        printf("%s",buff);
-    }
-}
-
+#include "client.h"
 
 int main(int argc, char const *argv[]) {
 
@@ -27,7 +13,7 @@ int main(int argc, char const *argv[]) {
     }
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = inet_addr(SERVER_IP);
-    servaddr.sin_port = htons(SERVER_PORT);
+    servaddr.sin_port = htons(PORT);
     if(connect(sock, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0){
         fprintf(stderr, "%s\n",strerror(errno));
         return errno;
@@ -40,3 +26,14 @@ int main(int argc, char const *argv[]) {
     }
     return 0;
 }
+
+void *afficheAll(void *sock){
+    int s=*(int *)sock;
+    char buff[256] = {0};
+    while (true){
+        memset(buff, 0x0, 256);
+        recv(s,buff, 256, 0);
+        printf("%s",buff);
+    }
+}
+

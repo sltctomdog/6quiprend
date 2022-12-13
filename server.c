@@ -1,39 +1,4 @@
-#include "game.c"
-#include "utils.c"
-#include "hpdf.h"
-#include <setjmp.h>
-jmp_buf env;
-#ifdef HPDF_DLL
-void  __stdcall
-#else
-void
-#endif
-error_handler  (HPDF_STATUS   error_no, HPDF_STATUS   detail_no, void *user_data)
-{
-    printf ("ERROR: error_no=%04X, detail_no=%u\n", (HPDF_UINT)error_no,(HPDF_UINT)detail_no);
-    longjmp(env, 1);
-}
-
-int createSock();  
-joueurArray* createjoueurArray(size_t max_joueur, size_t nb_bot); 
-void acceptClient(int serverSock,joueurArray *joueurArr, size_t nb); 
-void *pthreadInitClient(void *ptrClient); 
-void freejoueurArray(joueurArray *in); 
-void envoyerPiles(int** mat, joueur *joueur); 
-void affichePiles(HPDF_Page page,int** mat); 
-void envoyerMain(joueur *joueur); 
-void envoyerCartesJouees(joueur* joueur, joueurArray* lstJoueur, int* cartesTourPrec, int indice);
-void demanderCartes(joueurArray *in, int* cartesTour); 
-void *pthreadDemanderCartes(void *ptrClient); 
-void envoyerClassement(joueurArray *in); 
-bool checkNewGame(joueurArray *in); 
-void *pthreadAskClient(void *ptrClient); 
-int jouerCarte(int** piles, int carte, joueur* joueur); 
-void afficheCartesJouees(HPDF_Page page, joueurArray* lstJoueur, int* cartesTourPrec);
-
-void initPdf();
-void addLinePdf(HPDF_Page, char*);
-void savePdf(HPDF_Doc);
+#include "server.h"
 
 
 int main(int argc, char const *argv[]){
@@ -47,7 +12,7 @@ int main(int argc, char const *argv[]){
     HPDF_Doc pdf = HPDF_New(error_handler, NULL);
     HPDF_Font font = HPDF_GetFont(pdf, "Helvetica", NULL);
     HPDF_Page page = HPDF_AddPage(pdf);
-    HPDF_REAL height = HPDF_Page_GetHeight(page);
+    HPDF_Page_SetHeight(page, 14400);
     HPDF_REAL width = HPDF_Page_GetWidth(page);
     HPDF_REAL tw;
 
@@ -61,20 +26,16 @@ int main(int argc, char const *argv[]){
         FATAL();
     }
 
-    /* Affiche le cadre */
-    HPDF_Page_SetLineWidth (page, 1);
-    HPDF_Page_Rectangle (page, 50, 50, width - 100, height - 110);
-    HPDF_Page_Stroke (page);
 
     /* Affiche le titre */
     HPDF_Page_SetFontAndSize (page, font, 24);
     tw = HPDF_Page_TextWidth (page, page_title);
     HPDF_Page_BeginText (page);
-    HPDF_Page_TextOut (page, (width - tw) / 2, height - 50, page_title);
+    HPDF_Page_TextOut (page, (width - tw) / 2, 14400 - 50, page_title);
     HPDF_Page_EndText (page);
     HPDF_Page_SetFontAndSize (page, font, 10);
     HPDF_Page_BeginText(page);
-    HPDF_Page_MoveTextPos (page, 60, height - 80);
+    HPDF_Page_MoveTextPos (page, 60, 14400 - 80);
 
     /* INIT JOUEURS */
     size_t nb_client;
@@ -85,15 +46,15 @@ int main(int argc, char const *argv[]){
     joueurArray *lstJoueur = NULL;
     char client_input[SIZE_INPUT_USER];
     char *ret_fgets = NULL;
+    int mancheCount=1;
 
     /* Lancement du serveur + attente des clients */ 
-    printf("Nombre de clients : %lu\n", nb_client);
+    printf("\033[92;01mNombre de clients : %lu\n", nb_client);
     printf("Nombre de bots : %lu\n", nb_bot);
     printf("En attente des clients ...\n");
     lstJoueur = createjoueurArray(nb_client+nb_bot, nb_client);
     acceptClient(sock, lstJoueur, nb_client);
-
-
+    
     /* Clients receptionnés et écrit les clients dans le pdf */    
     HPDF_Page_ShowText(page, "Liste Joueurs : ");
     for (size_t i = 0; i < lstJoueur->size; i++) {
@@ -101,8 +62,7 @@ int main(int argc, char const *argv[]){
         HPDF_Page_ShowText(page, lstJoueur->lst[i].name);
         HPDF_Page_ShowText(page, " ");
     }
-    HPDF_Page_MoveTextPos(page, 0, -8);
-    addLinePdf(page,"Piles : ");        
+    printf("\033[92;00m");
 
     /* init paquet, piles, cartesTour */
     int* paquet;
@@ -122,9 +82,18 @@ int main(int argc, char const *argv[]){
         cartesTour = (int*)calloc(lstJoueur->size, sizeof(int));
         cartesTourPrec = (int*)calloc(lstJoueur->size, sizeof(int));
 
+        printf("\033[91;01mManche %d \033[91;00m\n",mancheCount);
+
+        /* PDF THINGS*/
+        HPDF_Page_MoveTextPos(page, 0, -15);
+        HPDF_Page_ShowText(page, "Manche");     
+        char mancheCountStr[2];
+        sprintf(mancheCountStr,"%d",mancheCount);  
+        HPDF_Page_ShowText(page, mancheCountStr);   
+        HPDF_Page_MoveTextPos(page, 0, -15);
+
         /* manche loop */
         do{    
-
             /* Affiche dans le serveur et écrit dans le pdf la pile de la manche en cours*/
             affichePiles(page,piles);
 
@@ -134,7 +103,7 @@ int main(int argc, char const *argv[]){
                     if(cartesTourPrec[0]!=0){
 	                    envoyerCartesJouees(&lstJoueur->lst[i], lstJoueur, cartesTourPrec, i);
                     }
-                    fprintf(lstJoueur->lst[i].file_ptr, "Vous avez <%d> tetes de boeufs\n", lstJoueur->lst[i].teteBoeuf);
+                    fprintf(lstJoueur->lst[i].file_ptr, "\033[91;01mVous avez <%d> tetes de boeufs\033[91;01m\n", lstJoueur->lst[i].teteBoeuf);
                     envoyerMain(&lstJoueur->lst[i]);
             }
 
@@ -151,7 +120,7 @@ int main(int argc, char const *argv[]){
                 afficheCartesJouees(page, lstJoueur, cartesTourPrec);
             }else{
                 HPDF_Page_ShowText(page, "------------------------");
-                HPDF_Page_MoveTextPos(page, 0, -10);
+                HPDF_Page_MoveTextPos(page, 0, -15);
                 printf("\n");
             }
 
@@ -177,11 +146,16 @@ int main(int argc, char const *argv[]){
         }
 
         /* Déallocation de la mémoire utilisée par les piles, le paquet et les cartesTour utilisée pendant cette manche */
+        mancheCount++;
         detruitPiles(piles);
         free(paquet);
         free(cartesTour);
         free(cartesTourPrec);
         sleep(2);
+
+        HPDF_Page_MoveTextPos(page, 0, -15);      
+        HPDF_Page_ShowText(page, "--------------------------------------------------------------------------------------------------------------------------------------");
+        HPDF_Page_MoveTextPos(page, 0, -15);      
     }while(checkNewGame(lstJoueur)==true); //Verifie si tous les clients veulent rejouer
 
     /* Signal la fin de la partie et leur classement à chacun des clients */
@@ -189,8 +163,9 @@ int main(int argc, char const *argv[]){
             fprintf(lstJoueur->lst[k].file_ptr, "Fin de la partie !\n");
     }
     
-    envoyerClassement(lstJoueur);
+    envoyerClassement(page, lstJoueur);
 
+    //page=HPDF_AddPage(pdf);
     HPDF_Page_EndText(page);
     savePdf(pdf);
 
@@ -338,6 +313,8 @@ void freejoueurArray(joueurArray *in){
 */
 void envoyerPiles(int** mat, joueur *joueur)
 {
+    fprintf(joueur->file_ptr, "\033[93;01m");
+
     for(int i=0; i<4; i++)
     {
         for(int j=0; j<6; j++)
@@ -346,6 +323,7 @@ void envoyerPiles(int** mat, joueur *joueur)
         }
         fprintf(joueur->file_ptr, "\n");
     }
+    fprintf(joueur->file_ptr, "\033[93;00m");
 }
 
 //! Envoie les cartes de leur mains aux clients
@@ -353,10 +331,10 @@ void envoyerPiles(int** mat, joueur *joueur)
     \param joueur pointeur sur la structure joueur
 */
 void envoyerMain(joueur *joueur){
-    fprintf(joueur->file_ptr, "Vos cartes : ");
+    fprintf(joueur->file_ptr, "\033[94;01mVos cartes : ");
     for(int j=0;j<joueur->nbCarte;j++)
         fprintf(joueur->file_ptr, "%d ", joueur->cartes[j]);
-    fprintf(joueur->file_ptr, "\n");
+    fprintf(joueur->file_ptr, "\033[94;00m\n");
 }
 
 //! Envoie les cartes jouées au tour précédent 
@@ -369,7 +347,7 @@ void envoyerMain(joueur *joueur){
 void envoyerCartesJouees(joueur* joueur, joueurArray* lstJoueur, int* cartesTourPrec, int indice){
     for(int i=0;i<lstJoueur->size;i++){
         if(i!=indice){
-            fprintf(joueur->file_ptr,"-%s a joué la carte %d\n", lstJoueur->lst[i].name, cartesTourPrec[i]);
+            fprintf(joueur->file_ptr,"\033[35;01m-%s a joué la carte %d\033[35;00m\n", lstJoueur->lst[i].name, cartesTourPrec[i]);
         }
     }
 }
@@ -378,7 +356,12 @@ void envoyerCartesJouees(joueur* joueur, joueurArray* lstJoueur, int* cartesTour
 /*!
     \param in pointeur sur la structure joueurArray
 */
-void envoyerClassement(joueurArray *in){
+void envoyerClassement(HPDF_Page page, joueurArray *in){
+
+
+    HPDF_Page_MoveTextPos(page, 0,-15);      
+    HPDF_Page_ShowText(page, "Resultats  : ");
+
     for(int i=0;i<in->size;i++){
         int indice = 1;
         for(int j=0;j<in->size;j++){
@@ -387,11 +370,21 @@ void envoyerClassement(joueurArray *in){
         }
         if(!in->lst[i].isBot){
             if(indice==1){
-            fprintf(in->lst[i].file_ptr, "Vous finissez 1er de la partie !");
+            fprintf(in->lst[i].file_ptr, "\033[93;01mVous finissez 1er de la partie !\033[93;00m");
         }else{
-            fprintf(in->lst[i].file_ptr, "Vous finissez %deme de la partie !", indice);
+            fprintf(in->lst[i].file_ptr, "\033[93;01mVous finissez %deme de la partie !\033[93;00m", indice);
         }      
-        }        
+        }
+
+        char si[2];
+        sprintf(si,"%d",indice);
+        HPDF_Page_MoveTextPos(page, 0, -15);    
+        HPDF_Page_ShowText(page, si);
+        HPDF_Page_ShowText(page, ". ");
+        HPDF_Page_ShowText(page, in->lst[i].name);
+        HPDF_Page_ShowText(page, " | ");
+        sprintf(si,"%d",in->lst[i].teteBoeuf);
+        HPDF_Page_ShowText(page, si);
     }
 }
 
@@ -478,7 +471,7 @@ void *pthreadDemanderCartes(void *ptrClient){
   if(reponse==NULL) FATAL();
   do {
     fprintf(cli->file_ptr,"Saisir la carte à jouer : ");
-    fgets(reponse,SIZE_INPUT_USER,cli->file_ptr);
+    fgets(reponse,SIZE_INPUT_USER,cli->file_ptr);   
     rep = atol(reponse);
   } while(rep<1 || rep>104 || !isCarteValid(ptrClient,rep));
   pthread_exit((void *)reponse);
@@ -564,8 +557,11 @@ int jouerCarte(int** piles, int carte, joueur* joueur){
 */
 void affichePiles(HPDF_Page page, int** mat)
 {
+    printf("\033[93;01m");
+
     for(int i=0; i<4; i++)
     {
+        
         char ligne[50];
         memset(ligne, 0, 50);
         for(int j=0; j<6; j++)
@@ -579,6 +575,8 @@ void affichePiles(HPDF_Page page, int** mat)
         addLinePdf(page, ligne);    
         printf("%s\n", ligne);
     }
+    printf("\033[93;00m");
+
     
 }
 
@@ -589,6 +587,8 @@ void affichePiles(HPDF_Page page, int** mat)
     \param cartesTourPrec les cartes du tour prec
 */
 void afficheCartesJouees(HPDF_Page page, joueurArray* lstJoueur, int* cartesTourPrec){
+    printf("\033[95;01m");
+    
     for(int i=0;i<lstJoueur->size;i++){
         char ligne[124];
         memset(ligne, 0, 124);
@@ -603,20 +603,20 @@ void afficheCartesJouees(HPDF_Page page, joueurArray* lstJoueur, int* cartesTour
        printf("%s\n", ligne);
     }
     HPDF_Page_ShowText(page, "------------------------");
-    HPDF_Page_MoveTextPos(page, 0, -10);
-    printf("\n");
+    HPDF_Page_MoveTextPos(page, 0, -15);
+    printf("\033[95;00m\n");
 }
 
 void addLinePdf(HPDF_Page page, char* str)
 {
     HPDF_Page_ShowText(page, str);
-    HPDF_Page_MoveTextPos(page, 0, -10);
+    HPDF_Page_MoveTextPos(page, 0, -15);
 }
 
 void savePdf(HPDF_Doc pdf)
 {
     char filename[25];
-    strcpy (filename, "test.pdf");
+    strcpy (filename, "History.pdf");
     HPDF_SaveToFile (pdf, filename);
 
     /* clean up */
