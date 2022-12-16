@@ -165,7 +165,6 @@ int main(int argc, char const *argv[]){
     
     envoyerClassement(page, lstJoueur);
 
-    //page=HPDF_AddPage(pdf);
     HPDF_Page_EndText(page);
     savePdf(pdf);
 
@@ -615,10 +614,7 @@ void addLinePdf(HPDF_Page page, char* str)
 
 void savePdf(HPDF_Doc pdf)
 {
-    char filename[25];
-    strcpy (filename, "History.pdf");
-    HPDF_SaveToFile (pdf, filename);
-
+    HPDF_SaveToFile (pdf, "History.pdf");
     /* clean up */
     HPDF_Free (pdf);
 }
